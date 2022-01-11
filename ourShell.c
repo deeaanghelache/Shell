@@ -233,9 +233,9 @@ void redirectInputOutputCommand(){
 		}
 
 		parseCommand4();
-		strcpy(absPath, "/bin/");
-		strcat(absPath, argv[0]);
-		execve(absPath, argv, NULL);
+		strcpy(cmd, "/bin/");
+		strcat(cmd, argv[0]);
+		execve(cmd, argv, NULL);
 	} else {
     		wait(NULL);
 	}	
