@@ -5,8 +5,8 @@
 	Proiect: Shell
 	
 	Comenzi:
-	   * din sistem: ls, pwd, rmdir, mkdir, echo, touch
-	   * implementate: cd, history, clearScreen
+	   * din sistem: ls, touch
+	   * implementate: cd, history, clearScreen, pwd, cp, >, <, rmdir, mkdir, echo
 	
 */
 
@@ -17,19 +17,27 @@
 #include <string.h>
 #include <stdbool.h>
 #include <sys/types.h>
-#include <readline/history.h>
+#include <readline/history.h> // pentru history + upArrow + downArrow
 #include <readline/readline.h>
 #include <sys/wait.h>
 #include <errno.h>
 #include <signal.h> // pentru suspendare program (SIGTSTP)
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <pthread.h>
 
 #define COMMAND_SIZE 200
 #define PARAMETERS_SIZE 50
 #define HISTORY_SIZE 1000
+#define PATH_SIZE 500
+#define NUMBER_OF_PROCS 100
+#define GRN   "\x1B[32m"
+#define RESET "\x1B[0m"
 
-char command[COMMAND_SIZE], *argv[PARAMETERS_SIZE], *history[HISTORY_SIZE], *path, *pipes[2];
+char command[COMMAND_SIZE], *argv[PARAMETERS_SIZE], *history[HISTORY_SIZE], *pipes[2], path[PATH_SIZE];
+static int procCnt = 0; 
+int pids[NUMBER_OF_PROCS];
+pthread_mutex_t mtx;
 
 int commandType(){
 	if (strchr(command, '|')){
@@ -146,40 +154,89 @@ void addHistory(){
 }
 
 void readCommand(){
-    fgets(command, sizeof command, stdin);
+    //fgets(command, sizeof command, stdin);
+    
+    //char *usr = getenv("USER");
+    //strcat(usr, " # ");
+    
+     //printf("%s # ",getenv("USER"));
+
+    
+    char * comm = readline("\n");
+    fflush(stdout);
+    //printf("%s\n", comm);
+    
+    strcpy(command, comm);
+    // printf("Command e: %s\n", command);
+    // printf("Comm e: %s\n", comm);
     
     if(strcmp(command, "\n") != 0){
     	addHistory();
-    	add_history(command);
+    	add_history(comm);
     }
+    
+    free(comm);
 }
 
 void printHistory(){
 	int contor = 0;
 	while(history[contor] != NULL){
-		printf("%d %s", contor + 1, history[contor]);
+		printf("%d %s\n", contor + 1, history[contor]);
 		contor++;
 	}
 }
 
 void changeDirectory(){
 	
-	printf("ARGV[1] : %s\n", argv[1]);
-	char *goToHome = "/home/andreea";
+	//printf("ARGV[1] : %s\n", argv[1]);
+	char goToHome[100] = "/home/";
 	char *user = getenv("USER");
 
-	//strcat(goToHome, user);
-	printf("%s\n", goToHome);
+	char *p = strtok(user, " ");
+	strcat(goToHome, p);
+	
+	//printf("U %s\n", p);
+	//printf("G %s\n", goToHome);
 	
 	if (argv[1] == NULL){
 		chdir(goToHome);
 		strcpy(path, goToHome);
-		printf("%s\n", path);
 	}
 	else
 	if (chdir(argv[1]) == -1){
 		perror(NULL);
+		exit(0);
+	}else{
+		if(strcmp(argv[1], "..") != 0){
+			// change directory to a child directory
+		
+			chdir(argv[0]);
+			strcat(path, "/");
+			strcat(path, argv[1]);
+		}
+		else{
+			// change directory to parent directory
+			
+			int stop;
+			char newPath[100] = "";
+			for(int i = strlen(path) - 2; i >= 0; i--){
+				if(path[i] == '/'){
+					stop = i; 
+					break;
+				}
+			}
+			
+			for(int i = 0; i < stop; i++){
+				newPath[i] = path[i];
+			} 
+			
+			strcpy(path, newPath);
+			strcat(path, "/");
+			
+		}
+		//printf("PATH %s\n", path);
 	}
+	return;
 }
 
 
@@ -196,7 +253,50 @@ void commandPipes(){
 	
 }
 
+void printWorkingDirectory(){
+	printf("%s\n", path);
+}
 
+void copy(){
+	int source = open(argv[1], O_RDONLY);
+	
+	if(source < 0)
+	{
+		perror(NULL);
+		return;
+	}
+	
+	int destination = open(argv[2], O_CREAT | O_WRONLY, 0777);
+
+	if(destination < 0)
+	{
+		perror(NULL);
+		return;
+	}
+	
+	int reader; 
+	char buffer[4096];
+	
+	while((reader = read(source, buffer, 4096)) > 0){
+		write(destination, buffer, reader);
+	}
+	
+	close(source);
+	close(destination);
+}
+
+void childPid(int pid){
+
+	//printf("%s a intrat aici\n", command);
+	pthread_mutex_lock(&mtx);
+	
+	//printf("%d", pid);
+	pids[procCnt] = pid;
+        procCnt++;
+        
+        pthread_mutex_unlock(&mtx);
+        //printf("tot %s e\n", command);
+}
 
 void simpleCommands(){
 	char cmd[COMMAND_SIZE];
@@ -208,46 +308,85 @@ void simpleCommands(){
         else if (pid == 0) {
             // Child instructions
             
-            if(strcmp(argv[0], "history") == 0){
+            if (strcmp(argv[0], "history") == 0){
             	// History
             	printHistory();
-            } 
+            	
+            	int pidChild = getpid();
+		childPid(pidChild);
+            } else
             
-            if(strcmp(argv[0], "clearScreen") == 0) {
+            if (strcmp(argv[0], "clearScreen") == 0) {
             	// Clear
             	system("clear");
-            }
+            	int pidChild = getpid();
+		childPid(pidChild);
+            } else
+            
+            if (strcmp(argv[0], "pwd") == 0) {
+            	// Print Working Directory
+            	printWorkingDirectory(); 	
+              	int pidChild = getpid();
+		childPid(pidChild);
+            } else
+            
+            if (strcmp(argv[0], "cp") == 0) {
+            	copy();
+            	int pidChild = getpid();
+		childPid(pidChild);
+            } else
 	
             if (strcmp(argv[0], "cd") == 0){
             	// Change directory
-            	printf("ARGV[0] : %s\n", argv[0]);
+            	// printf("ARGV[0] : %s\n", argv[0]);
             	
             	changeDirectory();
-            	printf("1");
+            	int pidChild = getpid();
+		childPid(pidChild);
+            	
+            	//printf("PATH %s\n", path);
+            	
+            	//char *u = getenv("USER");
+            	//printf("USEEEER: %s\n", u);
+            	//printf("1");
             } else{
             	// Other commands
 		    strcpy(cmd, "/bin/");
 		    strcat(cmd, argv[0]);
+		    
+		    int pidChild = getpid();
+		    childPid(pidChild);
+		    
 		    execve(cmd, argv, NULL); // NULL -> pentru envp (in envp sunt puse variabilele de sistem din mediul de executie)
             }
-            return;
         } else {
-            // Parent instructions
+            // Parent instrsuctions
             wait(0);
         }
+        
 }
-
-
-
 
 
 int main() {
     system("clear");
-    path = getenv("PATH");
+    //path = getenv("PATH");
+    
+    if(getcwd(path, sizeof(path)) == NULL){
+    	perror(NULL);
+    }
+	
+    //printf("%s\n", path);
 	
     while (true) {
-        printf("%s # ",getenv("USER"));
-        fflush(stdout);
+    
+    	    fflush(stdout);
+    	    printf(GRN "%s # ", getenv("USER"));
+    	    printf(RESET);
+    	    fflush(stdout);
+    //char *usr = getenv("USER");
+    
+    //strcat(usr, " # ");
+
         readCommand();
 	
         int tip = commandType();
@@ -275,13 +414,17 @@ int main() {
 		}
 		
 		if (strcmp(argv[0], "q") == 0) { // exit cu q sau cu CTRL + C
+		    // printf("%s\n", argv[0]);
+		    
+		    for(int i = 0; i <= NUMBER_OF_PROCS; i++)
+		    	if(pids[i] != 0){
+		    		kill(pids[i], SIGKILL);
+		    	}
 		    exit(0);
         	}
         	
         	simpleCommands();
         }
-        
-        
         
     }
 
