@@ -188,7 +188,7 @@ void commandPipe(){
 }
 
 void redirectInputOutputCommand(){
-	// parsare pentru redirect input/output
+	// redirect input/output
 
 	char cmd[100], file[100];
 	bool in = false, out = false;

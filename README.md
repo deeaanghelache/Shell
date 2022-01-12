@@ -11,7 +11,7 @@ We had to implement a shell.
     gcc -o ourShell ourShell.c -lreadline
 ```
 ## Implemented functions
-1. Change Directory (cd)
+1. Change Directory (cd) => *cd folder*, *cd ..*, *cd*
 2. History 
 If you enter the command "history" in our shell, it will show a list with all the commands you have entered before.
 Also, you can use the up and down arrows to navigate through the commands you have already entered.
@@ -21,3 +21,6 @@ Also, you can use the up and down arrows to navigate through the commands you ha
 6. Make Directory (mkdir)
 7. Remove Directory (rmdir)
 8. Echo (echo)
+9. Redirect input/output
+10. Pipe
+11. Kill => suspends all the running processes (q)
